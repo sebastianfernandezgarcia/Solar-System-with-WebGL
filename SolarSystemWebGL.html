@@ -1,0 +1,506 @@
+<!doctype html>
+<html>
+    <!-- CÓDIGO REALIZADO POR:     
+          - Sebastián Fernández García
+          - Santiago Adrián Yánez Martín
+     -->
+   <head>
+      <style>
+         #my_Canvas{border: 5px dotted red}        
+        h1 { color: #ffffff; font-family: 'Raleway',sans-serif; font-size: 30px; font-weight: 800; line-height: 22px; margin: 0 0 24px; text-align: center; text-transform: uppercase; }
+        h2 {color: #ffffff; font-family: 'Raleway',sans-serif; font-size: 12px; font-weight: 800; line-height: 16px; margin: 0 0 24px; text-align: center;}
+      </style>
+     
+     <script type="text/javascript" src="dat.gui.js"></script>
+     <script type="text/javascript" src="gl-matrix.js"></script>
+     
+   </head>
+  
+   <body style="background-color: #000000">
+     <br>
+     <h1>
+     Bienvenido al S<sup>4</sup> <br>   
+     </h1>
+     <h2>
+       Sistema Solar de Santi y Sebas
+     </h2>
+      <canvas width = "450" height = "450" id = "my_Canvas"></canvas>
+ 
+     <!-- vertex Shader -->
+     <script id="vertex-shader" type="x-shader/x-vertex">
+         #version 300 es
+         precision mediump float;
+
+         in vec2 aCoordinates;
+
+         uniform mat4 uModelMatrix;
+
+         void main(void) {
+           gl_Position = uModelMatrix * vec4(aCoordinates, 0, 1);           
+           gl_PointSize = 10.0;
+         }
+
+    </script>
+     
+    <!-- fragment Shader -->
+    <script id="fragment-shader" type="x-shader/x-fragment">
+        #version 300 es
+        precision mediump float;
+
+        uniform vec4 uColor;
+
+        out vec4 fragColor;
+
+        void main(void) {
+          fragColor = uColor;
+      }
+    </script>
+     
+
+   <script>
+     
+     var controls = new function(){
+       this.translateX = 0.0;
+       this.translateY = 0.0;
+       this.zoom = 1.0;
+       this.rotateZ = 0.0;
+       this.rotateX = 0.0;
+       this.rotateY = 0.0;
+     }
+     
+     var gui = new dat.GUI();
+     gui.add(controls, "translateX", -1,1,0.01);
+     gui.add(controls, "translateY", -1,1,0.01);
+     gui.add(controls, "zoom", 1,10,0.01);
+     gui.add(controls, 'rotateX', -180, 180);
+     gui.add(controls, 'rotateY', -180, 180);
+     gui.add(controls, "rotateZ", -180,180,0.01)
+     
+     
+      var modelMatrix = mat4.create();;
+      var matrixStack = [];
+
+      function glPushMatrix() {
+           const matrix = mat4.create();
+           mat4.copy(matrix, modelMatrix);
+           matrixStack.push(matrix);
+         }
+
+      function glPopMatrix() {
+           modelMatrix = matrixStack.pop();
+         }
+
+       var canvas;
+       var colorLoc;
+       var modelMatrixLoc;
+       var vertexBuffer;
+
+       var sol= {
+         'x':0, 'y':0,
+         'width':0.2, 'height':0.2,
+         'color':[1,0.7,0,1],
+         'angle': 0,
+       }
+
+       var tierra = {
+         'x':0.5, 'y':0,
+         'width':0.08, 'height':0.08,
+         'color':[0,0.4,1,1],
+         'angle':2
+       }
+
+        var venus = {
+         'x':0.25, 'y':0,
+         'width':0.05, 'height':0.05,
+         'color':[0.8,0.3,0,1],
+         'angle':-8
+       }
+
+       var jupiter = {
+         'x':0.9, 'y':0,
+         'width':0.13, 'height':0.13,
+         'color':[0.9,0.8,0.4,1],
+         'angle':0
+       }
+
+       var luna = {
+         'x':0.15, 'y':0,
+         'width':0.04, 'height':0.04,
+         'color':[1,1,1,1],
+         'angle':0,
+         'angle2': 0.5,
+         'angle3':-1,
+         'angle4':1
+       }
+       
+       var estrellas = {
+          'x':-1, 'y':-1,
+         'width':0.14, 'height':0.14,
+         'color':[1,1,1,1],
+
+         
+       }
+
+       function drawSquare() {
+         v = new Float32Array([-0.5,0.5,0.5,0.5,-0.5,-0.5,
+                              -0.5,-0.5,0.5,0.5,0.5,-0.5]);
+         gl.bufferData(gl.ARRAY_BUFFER, v, gl.STATIC_DRAW);
+         gl.drawArrays(gl.TRIANGLES, 0, 6);
+       }
+
+       function drawRectangle (r){
+         x = r.x;
+         y = r.y;
+         w = r.width;
+         h = r.height;
+         v = new Float32Array([x,y+h,x+w,y+h,x,y,
+                             x,y,x+w,y+h,x+w,y]);
+         // Pass the vertex data to the buffer
+         gl.bufferData(gl.ARRAY_BUFFER, v, 
+                       gl.STATIC_DRAW);
+         gl.uniform4fv(colorLoc,r.color);
+         gl.drawArrays(gl.TRIANGLES, 0, 6);
+       }
+
+
+       function init() {
+
+         // ============ STEP 1: Creating a canvas=================
+         canvas = document.getElementById('my_Canvas');
+         gl = canvas.getContext('webgl2'); 
+
+         //======= STEP 2: Defining and storing the geometry=======
+
+         var vertices = [
+           -0.8,0.5,
+           0.0,0.5,
+           -0.25,0.25,
+           0.0, 0.0
+         ];
+
+         // Create an empty buffer object to store the vertex buffer
+         vertex_buffer = gl.createBuffer();
+
+         // Bind appropriate array buffer to it
+         gl.bindBuffer(gl.ARRAY_BUFFER, vertex_buffer); 
+
+         // Unbind the buffer
+         gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+         //========== STEP 3: Create and compile shaders ==========
+
+         // Create a vertex shader object
+         var vertShader = gl.createShader(gl.VERTEX_SHADER);
+
+         // Attach vertex shader source code
+         var script = document.getElementById('vertex-shader');
+         var shaderString = script.text.trim();
+         gl.shaderSource(vertShader, shaderString);
+
+         // Compile the vertex shader
+         gl.compileShader(vertShader);
+
+         // Create fragment shader object
+         var fragShader = gl.createShader(gl.FRAGMENT_SHADER);
+
+         // Attach fragment shader source code
+         script = document.getElementById('fragment-shader');
+         shaderString = script.text.trim();
+         gl.shaderSource(fragShader, shaderString);
+
+         // Compile the fragmentt shader
+         gl.compileShader(fragShader);
+
+         // Create a shader program object to store
+         // the combined shader program
+         var shaderProgram = gl.createProgram();
+
+         // Attach a vertex shader
+         gl.attachShader(shaderProgram, vertShader); 
+
+         // Attach a fragment shader
+         gl.attachShader(shaderProgram, fragShader);
+
+         // Link both programs
+         gl.linkProgram(shaderProgram);
+
+         // Use the combined shader program object
+         gl.useProgram(shaderProgram);
+
+         //======== STEP 4: Associating shaders to buffer objects ========
+
+         // Bind vertex buffer object
+         gl.bindBuffer(gl.ARRAY_BUFFER, vertex_buffer);
+
+         // Get the attribute location
+         var coordLocation = gl.getAttribLocation(shaderProgram, "aCoordinates");
+
+         // obtener la location del color
+         colorLoc = gl.getUniformLocation(shaderProgram, "uColor");
+         //translationLoc = gl.getUniformLocation(shaderProgram, "uTranslation");
+         modelMatrixLoc = gl.getUniformLocation(shaderProgram, "uModelMatrix");
+
+         // Point an attribute to the currently bound VBO
+         gl.vertexAttribPointer(coordLocation, 2, gl.FLOAT, false, 0, 0);
+
+         // Enable the attribute
+         gl.enableVertexAttribArray(coordLocation);
+
+         // Unbind the buffer
+         gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+        time=0;
+        render(time);
+       }
+
+       function drawCircle() {
+         const n = 50;
+           coords = new Float32Array(n*2);
+           for (i=0; i<n; i++) {
+             ang = 2*Math.PI/n*i;
+             coords[2*i] = Math.cos(ang);
+             coords[2*i+1] = Math.sin(ang);
+           }
+           gl.bufferData(gl.ARRAY_BUFFER, coords, gl.STATIC_DRAW);
+           delete coords;
+           gl.drawArrays(gl.LINE_LOOP, 0, n);
+       }
+
+
+       function render(time) {
+         //console.log('tiempo='+time);
+         //========= STEP 5: Drawing the primitive ===============
+
+         // Clear the canvas
+         gl.clearColor(0,0,0, 1.0);
+
+         // Clear the color buffer bit
+         gl.clear(gl.COLOR_BUFFER_BIT);
+
+         // Set the view port
+         gl.viewport(0,0,canvas.width,canvas.height);
+
+         gl.bindBuffer(gl.ARRAY_BUFFER, vertex_buffer);
+
+         //gl.uniform2f(translationLoc, controls.translateX, controls.translateY)
+
+         modelMatrix = mat4.create();
+         mat4.identity(modelMatrix);
+         mat4.translate(modelMatrix, modelMatrix, [controls.translateX, controls.translateY, 0]);
+         mat4.scale(modelMatrix, modelMatrix, [controls.zoom, controls.zoom, 1]);
+         mat4.rotateX(modelMatrix, modelMatrix, controls.rotateX/180*Math.PI);
+         mat4.rotateY(modelMatrix, modelMatrix, controls.rotateY/180*Math.PI);
+         mat4.rotateZ(modelMatrix, modelMatrix, controls.rotateZ/180*Math.PI);
+         gl.uniformMatrix4fv(modelMatrixLoc, false, modelMatrix);
+
+         
+         //--------------------pintar el sol--------------------------
+         glPushMatrix();
+            sol.angle += 0.002
+            mat4.rotateY(modelMatrix, modelMatrix, -Math.PI/10);
+            mat4.rotateZ(modelMatrix, modelMatrix, sol.angle);
+            mat4.scale(modelMatrix, modelMatrix, [sol.width, sol.height, 1]);
+            gl.uniformMatrix4fv(modelMatrixLoc, false, modelMatrix);
+            gl.uniform4fv(colorLoc, sol.color);
+           drawSquare();
+         glPopMatrix();
+         //------------------------------------------------------------
+
+
+         
+         glPushMatrix();
+           mat4.rotateY(modelMatrix, modelMatrix, -Math.PI/10);
+           mat4.rotateX(modelMatrix, modelMatrix, -Math.PI/10);
+           // --------------pintar órbita de la tierra-------------------
+           glPushMatrix();
+             mat4.scale(modelMatrix, modelMatrix, [tierra.x, tierra.x, 1]);
+             gl.uniformMatrix4fv(modelMatrixLoc, false, modelMatrix);
+             gl.uniform4fv(colorLoc, [1,1,1,1]);
+             drawCircle();
+           glPopMatrix();
+
+           // --------------pintar la tierra-------------------
+           tierra.angle += 0.01
+           mat4.rotateZ(modelMatrix, modelMatrix, tierra.angle);
+           //mat4.rotateY(modelMatrix, modelMatrix, -Math.PI/25);
+           mat4.translate(modelMatrix, modelMatrix, [tierra.x, tierra.y, 0])
+
+           glPushMatrix();
+             mat4.rotateZ(modelMatrix, modelMatrix, tierra.angle);
+             mat4.scale(modelMatrix, modelMatrix, [tierra.width, tierra.height, 1]);
+             gl.uniformMatrix4fv(modelMatrixLoc, false, modelMatrix);
+             gl.uniform4fv(colorLoc, tierra.color);
+             drawSquare();
+           glPopMatrix();
+            //------------------------------------------------------------
+
+
+           //-------------pintar órbita luna de la tierra-----------------
+           glPushMatrix();
+             mat4.scale(modelMatrix, modelMatrix, [luna.x, luna.x, 1]);
+             gl.uniformMatrix4fv(modelMatrixLoc, false, modelMatrix);
+             gl.uniform4fv(colorLoc, [1,1,1,1]);
+             drawCircle();
+           glPopMatrix();
+
+           // ----------------pintar la luna de la ierra---------------------
+           glPushMatrix();
+             luna.angle += 0.05
+             mat4.rotateZ(modelMatrix, modelMatrix, luna.angle);
+             mat4.translate(modelMatrix, modelMatrix, [luna.x, luna.y, 0])
+             mat4.scale(modelMatrix, modelMatrix, [luna.width, luna.height, 1]);
+             gl.uniformMatrix4fv(modelMatrixLoc, false, modelMatrix);
+             gl.uniform4fv(colorLoc, luna.color);
+             drawSquare();
+           glPopMatrix();
+         glPopMatrix();
+
+
+         glPushMatrix(); 
+          mat4.rotateY(modelMatrix, modelMatrix, -Math.PI/5);
+          mat4.rotateX(modelMatrix, modelMatrix, -Math.PI/10);
+          //-----------------pintar jupiter y su órbita------------------------
+           glPushMatrix();
+             mat4.scale(modelMatrix, modelMatrix, [jupiter.x, jupiter.x, 1]);
+             gl.uniformMatrix4fv(modelMatrixLoc, false, modelMatrix);
+             gl.uniform4fv(colorLoc, [1,1,1,1]);
+             drawCircle();
+           glPopMatrix();
+         
+           jupiter.angle += 0.005
+           mat4.rotateZ(modelMatrix, modelMatrix, jupiter.angle);
+           mat4.translate(modelMatrix, modelMatrix, [jupiter.x, jupiter.y, 0])
+
+         glPushMatrix();
+           mat4.rotateZ(modelMatrix, modelMatrix, jupiter.angle);
+           mat4.scale(modelMatrix, modelMatrix, [jupiter.width, jupiter.height, 1]);
+           gl.uniformMatrix4fv(modelMatrixLoc, false, modelMatrix);
+           gl.uniform4fv(colorLoc, jupiter.color);
+           drawSquare();
+         glPopMatrix();
+
+         //-------------------------------------------------------------------
+
+         //-----------------pinto órbita y luna 1 de jupiter-----------------
+         
+         glPushMatrix();
+            mat4.rotateY(modelMatrix, modelMatrix, -Math.PI/6); 
+           glPushMatrix();
+             mat4.scale(modelMatrix, modelMatrix, [luna.x, luna.x, 1]);
+             gl.uniformMatrix4fv(modelMatrixLoc, false, modelMatrix);
+             gl.uniform4fv(colorLoc, [1,1,1,1]);
+             drawCircle();
+           glPopMatrix();
+
+           glPushMatrix();
+             luna.angle += 0.05
+             mat4.rotateZ(modelMatrix, modelMatrix, luna.angle);
+             mat4.translate(modelMatrix, modelMatrix, [luna.x, luna.y, 0])
+             mat4.scale(modelMatrix, modelMatrix, [luna.width, luna.height, 1]);
+             gl.uniformMatrix4fv(modelMatrixLoc, false, modelMatrix);
+             gl.uniform4fv(colorLoc, luna.color);
+             drawSquare();
+           glPopMatrix();
+         glPopMatrix();
+         //--------------------------------------------------------------
+         
+         // ------------pinto órbita y luna 2 de jupiter----------------------
+         glPushMatrix();
+           mat4.rotateY(modelMatrix, modelMatrix, -Math.PI/30);
+           glPushMatrix();
+             mat4.scale(modelMatrix, modelMatrix, [luna.x+0.115, luna.x+0.115, 1]);
+             gl.uniformMatrix4fv(modelMatrixLoc, false, modelMatrix);
+             gl.uniform4fv(colorLoc, [1,1,1,1]);
+             drawCircle();
+           glPopMatrix();
+
+           glPushMatrix();
+             luna.angle2 += 0.05
+             mat4.rotateZ(modelMatrix, modelMatrix, luna.angle2);
+             mat4.translate(modelMatrix, modelMatrix, [luna.x+0.1, luna.y+0.1, 0])
+             mat4.scale(modelMatrix, modelMatrix, [luna.width-0.01, luna.height-0.01, 1]);
+             gl.uniformMatrix4fv(modelMatrixLoc, false, modelMatrix);
+             gl.uniform4fv(colorLoc, luna.color);
+             drawSquare();
+           glPopMatrix();
+         glPopMatrix();
+         //------------------------------------------------------------
+
+         //-------------pinto órbita luna 3 de jupiter-------------------
+         glPushMatrix();
+           mat4.rotateY(modelMatrix, modelMatrix, -Math.PI/2);
+           glPushMatrix();
+             mat4.scale(modelMatrix, modelMatrix, [luna.x-0.05, luna.x-0.05, 1]);
+             gl.uniformMatrix4fv(modelMatrixLoc, false, modelMatrix);
+             gl.uniform4fv(colorLoc, [1,1,1,1]);
+             drawCircle();
+           glPopMatrix();
+
+           glPushMatrix();
+             luna.angle3 += 0.03
+             mat4.rotateZ(modelMatrix, modelMatrix, luna.angle3);
+             mat4.translate(modelMatrix, modelMatrix, [luna.x-0.05, luna.y-0.05, 0])
+             mat4.scale(modelMatrix, modelMatrix, [luna.width-0.01, luna.height-0.01, 1]);
+             gl.uniformMatrix4fv(modelMatrixLoc, false, modelMatrix);
+             gl.uniform4fv(colorLoc, luna.color);
+             drawSquare();
+           glPopMatrix();
+        glPopMatrix();
+        //---------------------------------------------------------------- 
+         
+         //---------------pinto órbita y luna 4 de jupiter--------------------
+         glPushMatrix();
+            mat4.rotateY(modelMatrix, modelMatrix, -Math.PI/-2);
+           glPushMatrix();
+             mat4.scale(modelMatrix, modelMatrix, [luna.x+0.05, luna.x+0.05, 1]);
+             gl.uniformMatrix4fv(modelMatrixLoc, false, modelMatrix);
+             gl.uniform4fv(colorLoc, [1,1,1,1]);
+             drawCircle();
+           glPopMatrix();
+
+             glPushMatrix();
+               luna.angle4 += 0.01         
+               mat4.rotateZ(modelMatrix, modelMatrix, luna.angle4);
+               mat4.translate(modelMatrix, modelMatrix, [luna.x+0.05, luna.y+0.05, 0])
+               mat4.scale(modelMatrix, modelMatrix, [luna.width+0.01, luna.height+0.01, 1]);
+               gl.uniformMatrix4fv(modelMatrixLoc, false, modelMatrix);
+               gl.uniform4fv(colorLoc, luna.color);
+               drawSquare();
+             glPopMatrix();
+           glPopMatrix();
+         //---------------------------------------------------------------------
+          glPopMatrix();
+
+         //-----------------pintar la venus y su órbita-------------------------
+         glPushMatrix();
+           mat4.rotateY(modelMatrix, modelMatrix, -Math.PI/35);
+           glPushMatrix();
+             mat4.scale(modelMatrix, modelMatrix, [venus.x, venus.x, 1]);
+             gl.uniformMatrix4fv(modelMatrixLoc, false, modelMatrix);
+             gl.uniform4fv(colorLoc, [1,1,1,1]);
+             drawCircle();
+           glPopMatrix();
+         
+             venus.angle += 0.015
+             mat4.rotateZ(modelMatrix, modelMatrix, venus.angle);
+             mat4.translate(modelMatrix, modelMatrix, [venus.x, venus.y, 0])
+
+           glPushMatrix();
+             mat4.rotateZ(modelMatrix, modelMatrix, venus.angle);
+             mat4.scale(modelMatrix, modelMatrix, [venus.width, venus.height, 1]);
+             gl.uniformMatrix4fv(modelMatrixLoc, false, modelMatrix);
+             gl.uniform4fv(colorLoc, venus.color);
+             drawSquare();
+           glPopMatrix();
+         glPopMatrix();
+        //------------------------------------------------------
+         gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+         window.requestAnimationFrame(render);
+       }
+
+       window.onload =init;
+
+   </script>
+   </body>
+</html>
